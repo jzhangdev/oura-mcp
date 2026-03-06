@@ -1,348 +1,189 @@
-# Oura MCP 项目改进建议
+# Oura MCP 项目改进记录
 
-> 由 Codex (gpt-5.3-codex) 分析生成
-
----
-
-## 🔴 高优先级
-
-### 1. 缺少错误重试机制
-
-**问题描述：**
-当前 `ouraRequest` 函数在 API 请求失败时直接抛出错误，没有重试逻辑。
-
-**影响范围：**
-- 网络抖动导致请求失败
-- API 临时不可用
-- 用户体验差
-
-**解决方案：**
-添加指数退避重试机制。
-
-**代码示例：**
-```typescript
-async function ouraRequestWithRetry(
-  endpoint: string,
-  params?: Record<string, string>,
-  maxRetries = 3
-): Promise<any> {
-  let lastError: Error | null = null;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await ouraRequest(endpoint, params);
-    } catch (error) {
-      lastError = error as Error;
-      if (i < maxRetries - 1) {
-        const delay = Math.pow(2, i) * 1000; // 指数退避
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  
-  throw lastError;
-}
-```
+> 最后更新：2026-03-06
 
 ---
 
-### 2. 缺少输入验证边界检查
+## ✅ 已完成的改进
 
-**问题描述：**
-日期参数没有验证是否在合理范围内，可能导致 API 返回错误。
+### 1. ✅ 错误重试机制（已完成）
 
-**影响范围：**
-- 用户输入未来日期
-- 日期范围过大导致 API 超时
-- 无效日期格式
+**实施内容：**
+- ✅ 添加了 `RetryConfig` 接口定义
+- ✅ 实现了指数退避算法 (`calculateBackoff`)
+- ✅ 添加了随机抖动避免请求风暴
+- ✅ 网络错误自动重试
+- ✅ 5xx 服务器错误自动重试
+- ✅ 可配置的重试参数（默认：3次重试，1秒基础延迟，最大10秒）
 
-**解决方案：**
-添加日期验证和范围限制。
-
-**代码示例：**
-```typescript
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format");
-
-function validateDateRange(startDate?: string, endDate?: string): void {
-  const today = new Date().toISOString().split('T')[0];
-  const maxRange = 365; // 最大查询范围一年
-  
-  if (startDate && startDate > today) {
-    throw new Error("Start date cannot be in the future");
-  }
-  
-  if (endDate && endDate > today) {
-    throw new Error("End date cannot be in the future");
-  }
-  
-  if (startDate && endDate) {
-    const diff = (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24);
-    if (diff > maxRange) {
-      throw new Error(`Date range cannot exceed ${maxRange} days`);
-    }
-  }
-}
-```
+**代码位置：** `src/index.ts` - `ouraRequest` 函数
 
 ---
 
-### 3. 缺少速率限制处理
+### 2. ✅ 输入验证（已完成）
 
-**问题描述：**
-Oura API 有速率限制，当前代码没有处理 `429 Too Many Requests` 响应。
+**实施内容：**
+- ✅ 使用 Zod 进行日期格式验证
+- ✅ 验证日期格式为 YYYY-MM-DD
+- ✅ 检查日期是否有效
+- ✅ 检查日期不能是未来日期
+- ✅ 检查日期不早于 2015-01-01（Oura API 最早日期）
+- ✅ 验证日期范围（start_date 不能晚于 end_date）
+- ✅ 所有工具都集成了输入验证
 
-**影响范围：**
-- 批量请求时被限流
-- 用户无法获得数据
-- 无友好错误提示
-
-**解决方案：**
-解析响应头中的速率限制信息并处理。
-
-**代码示例：**
-```typescript
-async function ouraRequest(endpoint: string, params?: Record<string, string>): Promise<any> {
-  const url = new URL(`${OURA_API_BASE}${endpoint}`);
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) url.searchParams.append(key, value);
-    });
-  }
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      "Authorization": `Bearer ${OURA_ACCESS_TOKEN}`,
-    },
-  });
-
-  // 处理速率限制
-  if (response.status === 429) {
-    const retryAfter = response.headers.get('Retry-After') || '60';
-    throw new Error(`Rate limited. Please retry after ${retryAfter} seconds`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Oura API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
-```
+**代码位置：** `src/index.ts` - `DateValidationSchema`, `validateDate`, `validateDateRange`
 
 ---
 
-## 🟡 中优先级
+### 3. ✅ 速率限制处理（已完成）
 
-### 4. 代码结构需要模块化
+**实施内容：**
+- ✅ 创建了 `RateLimitError` 自定义错误类
+- ✅ 处理 HTTP 429 状态码
+- ✅ 解析 `Retry-After` 响应头
+- ✅ 自动等待后重试
+- ✅ 友好的错误提示（包含等待时间）
 
-**问题描述：**
-所有代码集中在 `src/index.ts` 单文件中（约 340 行），难以维护。
+**代码位置：** `src/index.ts` - `RateLimitError` 类, `ouraRequest` 函数
 
-**影响范围：**
-- 代码可读性差
-- 难以测试
-- 无法复用
+---
 
-**解决方案：**
-拆分为多个模块。
+### 4. ✅ 增强的错误消息（已完成）
 
-**建议结构：**
+**实施内容：**
+- ✅ 使用 emoji 提升可读性
+- ✅ 针对不同错误类型提供特定消息：
+  - ⏳ 速率限制错误
+  - ❌ 验证错误
+  - 🔐 认证失败（401）
+  - 🚫 访问禁止（403）
+  - 🌐 网络错误
+- ✅ 返回结构化错误响应
+
+**代码位置：** `src/index.ts` - `CallToolRequestSchema` 处理器
+
+---
+
+### 5. ✅ 版本升级（已完成）
+
+**变更：**
+- 版本从 1.0.0 升级到 1.1.0
+- 启动时显示版本和功能信息
+
+---
+
+## 📊 改进效果
+
+### 可靠性提升
+- **网络容错**：临时网络故障不再导致请求失败
+- **服务器容错**：API 临时不可用时会自动重试
+- **速率限制**：避免因超出速率限制而被拒绝服务
+
+### 用户体验提升
+- **清晰的错误提示**：用户能快速理解问题原因
+- **自动重试**：减少用户手动重试的需求
+- **输入验证**：提前发现无效输入，避免无谓的 API 调用
+
+### 代码质量提升
+- **类型安全**：完整的 TypeScript 类型定义
+- **错误处理**：统一的错误处理模式
+- **可维护性**：清晰的代码结构和注释
+
+---
+
+## 🟡 待改进项（中优先级）
+
+### 6. 代码结构模块化
+
+**建议：**
+将单文件拆分为多个模块，提高可维护性。
+
 ```
+建议结构：
 src/
 ├── index.ts          # 入口和服务器配置
-├── tools/
-│   ├── sleep.ts      # 睡眠相关工具
-│   ├── activity.ts   # 活动相关工具
-│   ├── readiness.ts  # 准备度工具
-│   ├── heart.ts      # 心率工具
-│   └── workouts.ts   # 锻炼工具
-├── api/
-│   └── oura.ts       # Oura API 客户端
-├── schemas/
-│   └── index.ts      # Zod schemas
-└── utils/
-    └── date.ts       # 日期工具函数
+├── tools/            # 各个 MCP 工具
+├── api/              # Oura API 客户端
+├── schemas/          # Zod schemas
+└── utils/            # 工具函数
 ```
 
 ---
 
-### 5. 缺少日志系统
+### 7. 添加日志系统
 
-**问题描述：**
-当前只有 `console.error` 输出错误，缺少结构化日志。
+**建议：**
+使用 pino 或 winston 添加结构化日志。
 
-**影响范围：**
-- 调试困难
-- 无法追踪问题
-- 生产环境监控困难
-
-**解决方案：**
-使用 pino 或 winston 日志库。
-
-**代码示例：**
-```typescript
-import pino from 'pino';
-
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true }
-  }
-});
-
-// 使用示例
-logger.info({ tool: 'get_sleep_data', params }, 'Tool called');
-logger.error({ error: err.message }, 'API request failed');
-```
+**好处：**
+- 更好的调试体验
+- 生产环境监控
+- 问题追踪
 
 ---
 
-### 6. 缺少类型定义导出
+### 8. 导出类型定义
 
-**问题描述：**
-当前 `dist/index.d.ts` 只导出空对象，用户无法获得类型提示。
-
-**影响范围：**
-- IDE 无法提供类型提示
-- 用户需要手动定义类型
-
-**解决方案：**
-导出所有公共类型。
-
-**代码示例：**
-```typescript
-// src/types.ts
-export interface SleepDataParams {
-  start_date?: string;
-  end_date?: string;
-}
-
-export interface SleepDataResponse {
-  // ... Oura API 响应类型
-}
-
-// src/index.ts
-export type { SleepDataParams, SleepDataResponse } from './types';
-```
+**建议：**
+在 `src/index.ts` 中导出所有公共类型，方便用户使用。
 
 ---
 
-## 🟢 低优先级
+## 🟢 待改进项（低优先级）
 
-### 7. 缺少单元测试
+### 9. 添加单元测试
 
-**问题描述：**
-项目没有任何测试文件。
-
-**解决方案：**
-添加 Jest 或 Vitest 测试框架。
-
-**代码示例：**
-```typescript
-// tests/oura.test.ts
-import { describe, it, expect, vi } from 'vitest';
-
-describe('ouraRequest', () => {
-  it('should handle rate limiting', async () => {
-    // 测试代码
-  });
-});
-```
+**建议：**
+使用 Vitest 或 Jest 添加测试覆盖。
 
 ---
 
-### 8. 缺少 CI/CD 配置
+### 10. CI/CD 配置
 
-**问题描述：**
-项目没有持续集成配置。
-
-**解决方案：**
-添加 GitHub Actions 工作流。
-
-**代码示例：**
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on: [push, pull_request]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-```
+**建议：**
+添加 GitHub Actions 自动化构建和测试。
 
 ---
 
-### 9. README 可以更详细
-
-**问题描述：**
-README 缺少 API 响应示例、常见问题解答。
+### 11. 完善 README
 
 **建议添加：**
 - API 响应示例
 - 错误代码说明
 - 常见问题 FAQ
 - 贡献指南
-- 变更日志
 
 ---
 
-### 10. 缺少配置文件验证
+### 12. 启动时 Token 验证
 
-**问题描述：**
-启动时只检查 `OURA_ACCESS_TOKEN`，没有验证 token 有效性。
-
-**解决方案：**
-添加启动时 token 验证。
-
-**代码示例：**
-```typescript
-async function validateToken(): Promise<boolean> {
-  try {
-    await ouraRequest('/usercollection/daily_sleep', {
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: new Date().toISOString().split('T')[0],
-    });
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-// 启动时验证
-if (!await validateToken()) {
-  console.error("Error: Invalid OURA_ACCESS_TOKEN");
-  process.exit(1);
-}
-```
+**建议：**
+启动时验证 token 有效性，提前发现问题。
 
 ---
 
-## 📊 改进优先级总结
+## 📈 改进统计
 
-| 优先级 | 问题 | 预计工作量 |
-|--------|------|-----------|
-| 🔴 高 | 错误重试机制 | 1-2 小时 |
-| 🔴 高 | 输入验证 | 1 小时 |
-| 🔴 高 | 速率限制处理 | 1 小时 |
-| 🟡 中 | 代码模块化 | 2-3 小时 |
-| 🟡 中 | 日志系统 | 1 小时 |
-| 🟡 中 | 类型导出 | 30 分钟 |
-| 🟢 低 | 单元测试 | 3-4 小时 |
-| 🟢 低 | CI/CD | 1 小时 |
-| 🟢 低 | README 完善 | 30 分钟 |
-| 🟢 低 | Token 验证 | 30 分钟 |
+| 类别 | 已完成 | 待完成 | 完成率 |
+|------|--------|--------|--------|
+| 高优先级 | 5/5 | 0/5 | 100% |
+| 中优先级 | 0/3 | 3/3 | 0% |
+| 低优先级 | 0/4 | 4/4 | 0% |
+| **总计** | **5/12** | **7/12** | **42%** |
 
 ---
 
-## 🚀 下一步建议
+## 🎯 下一步建议
 
-1. **立即处理**：高优先级问题（错误重试、输入验证、速率限制）
-2. **短期计划**：代码模块化重构
-3. **长期计划**：添加测试、CI/CD、完善文档
+1. ✅ **已完成**：高优先级的错误处理和验证
+2. 🔄 **进行中**：推送改进到 GitHub 仓库
+3. 📋 **计划中**：代码模块化重构
+4. 📋 **计划中**：添加日志和测试
+
+---
+
+## 🔗 相关链接
+
+- **GitHub 仓库**：https://github.com/jzhangdev/oura-mcp
+- **Oura API 文档**：https://cloud.ouraring.com/docs/
+- **MCP 协议**：https://modelcontextprotocol.io/
