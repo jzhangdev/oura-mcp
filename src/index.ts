@@ -7,199 +7,12 @@ import {
 import { z } from "zod";
 import "dotenv/config";
 
-// Oura API base URL
-const OURA_API_BASE = "https://api.ouraring.com/v2";
+import { logger } from './utils/logger.js';
+import { validateDate, validateDateRange, getDefaultStartDate, getDefaultEndDate } from './utils/date.js';
+import { ouraRequest } from './api/ouraClient.js';
+import { RateLimitError } from './utils/retry.js';
 
-// Get access token from environment
-const OURA_ACCESS_TOKEN = process.env.OURA_ACCESS_TOKEN;
-
-if (!OURA_ACCESS_TOKEN) {
-  console.error("Error: OURA_ACCESS_TOKEN environment variable is required");
-  process.exit(1);
-}
-
-// ============ 🔴 高优先级改进 1: 错误重试机制 ============
-
-interface RetryConfig {
-  maxRetries: number;
-  baseDelay: number;  // milliseconds
-  maxDelay: number;
-}
-
-const DEFAULT_RETRY_CONFIG: RetryConfig = {
-  maxRetries: 3,
-  baseDelay: 1000,
-  maxDelay: 10000,
-};
-
-async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function calculateBackoff(attempt: number, config: RetryConfig): number {
-  const delay = Math.min(
-    config.baseDelay * Math.pow(2, attempt),
-    config.maxDelay
-  );
-  // 添加随机抖动避免请求风暴
-  return delay + Math.random() * 1000;
-}
-
-// ============ 🔴 高优先级改进 2: 输入验证 ============
-
-const DateValidationSchema = z.string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
-  .refine((date) => {
-    const parsed = new Date(date);
-    return !isNaN(parsed.getTime());
-  }, "Invalid date")
-  .refine((date) => {
-    const parsed = new Date(date);
-    const now = new Date();
-    return parsed <= now;
-  }, "Date cannot be in the future")
-  .refine((date) => {
-    const parsed = new Date(date);
-    const minDate = new Date('2015-01-01'); // Oura API 最早日期
-    return parsed >= minDate;
-  }, "Date must be after 2015-01-01");
-
-function validateDate(date: string | undefined, fieldName: string): string | Error {
-  if (!date) return date as undefined as any; // 允许空值
-  
-  const result = DateValidationSchema.safeParse(date);
-  if (!result.success) {
-    return new Error(`Invalid ${fieldName}: ${result.error.issues[0].message}`);
-  }
-  return date;
-}
-
-function validateDateRange(startDate: string | undefined, endDate: string | undefined): { start: string; end: string } | Error {
-  const startResult = validateDate(startDate, 'start_date');
-  if (startResult instanceof Error) return startResult;
-  
-  const endResult = validateDate(endDate, 'end_date');
-  if (endResult instanceof Error) return endResult;
-  
-  if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (start > end) {
-      return new Error('start_date cannot be after end_date');
-    }
-  }
-  
-  return { 
-    start: startDate || getDefaultStartDate(), 
-    end: endDate || getDefaultEndDate() 
-  };
-}
-
-// ============ 🔴 高优先级改进 3: 速率限制处理 ============
-
-class RateLimitError extends Error {
-  public readonly retryAfter: number;
-  
-  constructor(retryAfter: number) {
-    super(`Rate limited. Retry after ${retryAfter} seconds`);
-    this.name = 'RateLimitError';
-    this.retryAfter = retryAfter;
-  }
-}
-
-// 主请求函数，包含重试和速率限制处理
-async function ouraRequest(
-  endpoint: string, 
-  params?: Record<string, string>,
-  retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
-): Promise<any> {
-  const url = new URL(`${OURA_API_BASE}${endpoint}`);
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) url.searchParams.append(key, value);
-    });
-  }
-
-  let lastError: Error | null = null;
-  
-  for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
-    try {
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${OURA_ACCESS_TOKEN}`,
-        },
-      });
-
-      // 处理速率限制 (429)
-      if (response.status === 429) {
-        const retryAfterHeader = response.headers.get('Retry-After');
-        const retryAfter = retryAfterHeader 
-          ? parseInt(retryAfterHeader, 10) 
-          : 60; // 默认等待60秒
-        
-        console.error(`Rate limited. Waiting ${retryAfter} seconds...`);
-        
-        if (attempt < retryConfig.maxRetries) {
-          await sleep(retryAfter * 1000);
-          continue;
-        }
-        throw new RateLimitError(retryAfter);
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        
-        // 5xx 服务器错误可重试
-        if (response.status >= 500 && attempt < retryConfig.maxRetries) {
-          const delay = calculateBackoff(attempt, retryConfig);
-          console.error(`Server error ${response.status}. Retrying in ${delay}ms... (attempt ${attempt + 1}/${retryConfig.maxRetries})`);
-          await sleep(delay);
-          continue;
-        }
-        
-        throw new Error(`Oura API error: ${response.status} - ${errorText}`);
-      }
-
-      return response.json();
-      
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      
-      // 网络错误可重试
-      if (error instanceof TypeError && attempt < retryConfig.maxRetries) {
-        const delay = calculateBackoff(attempt, retryConfig);
-        console.error(`Network error. Retrying in ${delay}ms... (attempt ${attempt + 1}/${retryConfig.maxRetries})`);
-        await sleep(delay);
-        continue;
-      }
-      
-      // RateLimitError 直接抛出
-      if (error instanceof RateLimitError) {
-        throw error;
-      }
-      
-      // 其他错误直接抛出
-      if (error instanceof Error && error.message.startsWith('Oura API error')) {
-        throw error;
-      }
-    }
-  }
-  
-  throw lastError || new Error('Max retries exceeded');
-}
-
-// Date helper functions
-function getDefaultStartDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() - 7);
-  return date.toISOString().split("T")[0];
-}
-
-function getDefaultEndDate(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
-// Define tool schemas (不变)
+// Define tool schemas
 const GetSleepDataSchema = z.object({
   start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
   end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
@@ -238,7 +51,7 @@ const GetSessionsSchema = z.object({
 const server = new Server(
   {
     name: "oura-mcp",
-    version: "1.1.0", // 版本升级
+    version: "1.2.0",
   },
   {
     capabilities: {
@@ -371,7 +184,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool calls (增强错误处理)
+// Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -485,6 +298,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       detailedMessage = '🌐 Network error. Please check your internet connection.';
     }
     
+    logger.error(`Tool call failed: ${name}`, { error: detailedMessage });
+    
     return {
       content: [
         {
@@ -501,11 +316,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("✅ Oura MCP server v1.1.0 running on stdio");
-  console.error("   Features: retry logic, input validation, rate limit handling");
+  logger.info("Oura MCP server v1.2.0 running on stdio");
+  logger.info("Features: modular architecture, logging system, retry logic, input validation, rate limit handling");
 }
 
 main().catch((error) => {
-  console.error("Fatal error:", error);
+  logger.error("Fatal error", error);
   process.exit(1);
 });
