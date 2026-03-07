@@ -1,179 +1,171 @@
-import type { z } from "zod";
-import { 
-  GetSleepDataSchema,
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
+
+import { fetchAllPages } from "../api/pagination.js";
+import { ouraRequest } from "../api/ouraClient.js";
+import {
   GetActivityDataSchema,
-  GetReadinessDataSchema,
-  GetHeartRateSchema,
-  GetWorkoutsSchema,
   GetDailySleepSchema,
-  GetSessionsSchema,
+  GetHeartRateSchema,
   GetProfileSchema,
+  GetReadinessDataSchema,
+  GetSessionsSchema,
+  GetSleepDataSchema,
+  GetWorkoutsSchema,
   PingSchema,
 } from "../schemas/tools.js";
 import { validateDate, validateDateRange } from "../utils/date.js";
-import { ouraRequest } from "../api/ouraClient.js";
-import { fetchAllPages } from "../api/pagination.js";
 
-export type ToolDef = {
+type JsonSchema = ReturnType<typeof zodToJsonSchema>;
+type Params = Record<string, string | undefined>;
+type ToolSchema = z.ZodTypeAny;
+type RangeSchema = z.ZodObject<{
+  start_date: z.ZodOptional<z.ZodString>;
+  end_date: z.ZodOptional<z.ZodString>;
+}>;
+
+export type ToolDef<TSchema extends ToolSchema = ToolSchema> = {
   name: string;
   description: string;
-  schema: z.ZodTypeAny;
-  // Implement the business logic for each tool
-  handler: (args: any) => Promise<any>;
+  schema: TSchema;
+  handler: (args: z.infer<TSchema>) => Promise<unknown>;
 };
 
-export const tools: ToolDef[] = [
-  {
+function toInputSchema(schema: ToolSchema): JsonSchema {
+  return zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], {
+    target: "jsonSchema7",
+    $refStrategy: "none",
+  });
+}
+
+function createCollectionTool<TSchema extends ToolSchema>(config: {
+  name: string;
+  description: string;
+  schema: TSchema;
+  endpoint: string;
+  mapParams: (args: z.infer<TSchema>) => Params;
+}): ToolDef<TSchema> {
+  return {
+    name: config.name,
+    description: config.description,
+    schema: config.schema,
+    handler: async (rawArgs) => {
+      const args = config.schema.parse(rawArgs);
+      return fetchAllPages(config.endpoint, config.mapParams(args));
+    },
+  };
+}
+
+function createRangeCollectionTool(config: {
+  name:
+    | "get_sleep_data"
+    | "get_activity_data"
+    | "get_readiness_data"
+    | "get_heart_rate"
+    | "get_workouts"
+    | "get_sessions";
+  description: string;
+  schema: RangeSchema;
+  endpoint: string;
+  mapRange?: (range: { start: string; end: string }) => Params;
+}): ToolDef<RangeSchema> {
+  return createCollectionTool({
+    name: config.name,
+    description: config.description,
+    schema: config.schema,
+    endpoint: config.endpoint,
+    mapParams: (args) => {
+      const range = validateDateRange(args.start_date, args.end_date);
+      if (range instanceof Error) throw range;
+      return config.mapRange ? config.mapRange(range) : { start_date: range.start, end_date: range.end };
+    },
+  });
+}
+
+const rangeTools: ToolDef[] = [
+  createRangeCollectionTool({
     name: "get_sleep_data",
-    description:
-      "Get sleep data including duration, quality, sleep stages, and sleep score. Returns detailed sleep metrics for the specified date range.",
+    description: "Get sleep data including duration, quality, sleep stages, and sleep score.",
     schema: GetSleepDataSchema,
-    handler: async (args) => {
-      const params = GetSleepDataSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/daily_sleep", {
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      });
-      return res;
-    },
-  },
-  {
+    endpoint: "/usercollection/daily_sleep",
+  }),
+  createRangeCollectionTool({
     name: "get_activity_data",
-    description:
-      "Get daily activity metrics including steps, calories, active time, and activity score.",
+    description: "Get daily activity metrics including steps, calories, active time, and activity score.",
     schema: GetActivityDataSchema,
-    handler: async (args) => {
-      const params = GetActivityDataSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/daily_activity", {
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      });
-      return res;
-    },
-  },
-  {
+    endpoint: "/usercollection/daily_activity",
+  }),
+  createRangeCollectionTool({
     name: "get_readiness_data",
-    description:
-      "Get readiness score and contributors (sleep, activity, recovery). The readiness score indicates how prepared your body is for the day.",
+    description: "Get readiness score and contributors for the specified date range.",
     schema: GetReadinessDataSchema,
-    handler: async (args) => {
-      const params = GetReadinessDataSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/daily_readiness", {
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      });
-      return res;
-    },
-  },
-  {
+    endpoint: "/usercollection/daily_readiness",
+  }),
+  createRangeCollectionTool({
     name: "get_heart_rate",
-    description:
-      "Get heart rate data including resting heart rate and heart rate variability.",
+    description: "Get heart rate data including resting heart rate and heart rate variability.",
     schema: GetHeartRateSchema,
-    handler: async (args) => {
-      const params = GetHeartRateSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/heartrate", {
-        start_datetime: `${dateRange.start}T00:00:00Z`,
-        end_datetime: `${dateRange.end}T23:59:59Z`,
-      });
-      return res;
-    },
-  },
-  {
+    endpoint: "/usercollection/heartrate",
+    mapRange: (range) => ({
+      start_datetime: `${range.start}T00:00:00Z`,
+      end_datetime: `${range.end}T23:59:59Z`,
+    }),
+  }),
+  createRangeCollectionTool({
     name: "get_workouts",
-    description:
-      "Get workout records including activity type, duration, intensity, and heart rate data.",
+    description: "Get workout records including activity type, duration, intensity, and heart rate data.",
     schema: GetWorkoutsSchema,
-    handler: async (args) => {
-      const params = GetWorkoutsSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/workout", {
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      });
-      return res;
-    },
-  },
-  {
-    name: "get_daily_sleep",
-    description:
-      "Get sleep summary for a specific day including bedtime, sleep phases, and sleep efficiency.",
-    schema: GetDailySleepSchema,
-    handler: async (args) => {
-      const params = GetDailySleepSchema.parse(args);
-      const dateValidation = validateDate(params.date, "date");
-      if (dateValidation instanceof Error) throw dateValidation;
-      const res = await fetchAllPages("/usercollection/daily_sleep", {
-        start_date: params.date,
-        end_date: params.date,
-      });
-      return res;
-    },
-  },
-  {
+    endpoint: "/usercollection/workout",
+  }),
+  createRangeCollectionTool({
     name: "get_sessions",
-    description:
-      "Get tagged sessions such as meditation, nap, or other activities you've logged.",
+    description: "Get tagged sessions such as meditation, nap, or other logged activities.",
     schema: GetSessionsSchema,
-    handler: async (args) => {
-      const params = GetSessionsSchema.parse(args);
-      const dateRange = validateDateRange(params.start_date, params.end_date);
-      if (dateRange instanceof Error) throw dateRange;
-      const res = await fetchAllPages("/usercollection/session", {
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      });
-      return res;
+    endpoint: "/usercollection/session",
+  }),
+];
+
+const singleDateTools: ToolDef[] = [
+  createCollectionTool({
+    name: "get_daily_sleep",
+    description: "Get sleep summary for a specific day including bedtime, sleep phases, and sleep efficiency.",
+    schema: GetDailySleepSchema,
+    endpoint: "/usercollection/daily_sleep",
+    mapParams: (args) => {
+      const date = validateDate(args.date, "date");
+      if (date instanceof Error) throw date;
+      return { start_date: date, end_date: date };
     },
-  },
+  }),
+];
+
+const utilityTools: ToolDef[] = [
   {
     name: "get_profile",
-    description: "Get profile/personal info for the current user to verify token and show user info.",
+    description: "Get personal info for the current user to verify token and show profile data.",
     schema: GetProfileSchema,
-    handler: async () => {
-      const res = await ouraRequest("/usercollection/personal_info", {});
-      return res;
-    },
+    handler: async () => ouraRequest("/usercollection/personal_info", {}),
   },
   {
     name: "ping",
-    description: "Simple health check for the MCP server (no Oura API call).",
+    description: "Simple health check for the MCP server without calling the Oura API.",
     schema: PingSchema,
-    handler: async () => {
-      return { status: "ok", timestamp: new Date().toISOString() };
-    },
+    handler: async () => ({ status: "ok", timestamp: new Date().toISOString() }),
   },
 ];
 
-export function toMcpToolList() {
-  return tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: zodToJsonSchema(t.schema),
-  }));
+export const tools: ToolDef[] = [...rangeTools, ...singleDateTools, ...utilityTools];
+
+const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
+
+export function findTool(name: string): ToolDef | undefined {
+  return toolMap.get(name);
 }
 
-// Minimal Zod -> JSON Schema converter for our simple argument objects
-function zodToJsonSchema(schema: any): any {
-  try {
-    const shape = (schema as any).shape;
-    const properties: Record<string, any> = {};
-    for (const key of Object.keys(shape || {})) {
-      const field = shape[key];
-      const desc = field?.description ?? field?._def?.description;
-      properties[key] = { type: 'string', description: desc };
-    }
-    return { type: 'object', properties };
-  } catch {
-    return { type: 'object', properties: {} };
-  }
+export function toMcpToolList() {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: toInputSchema(tool.schema),
+  }));
 }

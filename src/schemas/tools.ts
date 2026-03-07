@@ -1,50 +1,41 @@
 import { z } from "zod";
 
-export const GetSleepDataSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
-});
+const DateFieldDescription = "Date in YYYY-MM-DD format";
 
-export const GetActivityDataSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
-});
+export const OptionalDateSchema = z.string().optional().describe(DateFieldDescription);
+export const RequiredDateSchema = z.string().describe(DateFieldDescription);
 
-export const GetReadinessDataSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
-});
+function createDateRangeSchema() {
+  return z.object({
+    start_date: OptionalDateSchema,
+    end_date: OptionalDateSchema,
+  });
+}
 
-export const GetHeartRateSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
-});
-
-export const GetWorkoutsSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
-});
+export const GetSleepDataSchema = createDateRangeSchema();
+export const GetActivityDataSchema = createDateRangeSchema();
+export const GetReadinessDataSchema = createDateRangeSchema();
+export const GetHeartRateSchema = createDateRangeSchema();
+export const GetWorkoutsSchema = createDateRangeSchema();
+export const GetSessionsSchema = createDateRangeSchema();
 
 export const GetDailySleepSchema = z.object({
-  date: z.string().describe("Date (YYYY-MM-DD)"),
-});
-
-export const GetSessionsSchema = z.object({
-  start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-  end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
+  date: RequiredDateSchema,
 });
 
 export const GetProfileSchema = z.object({});
 export const PingSchema = z.object({});
 
-export type ToolArgSchemas = {
-  get_sleep_data: typeof GetSleepDataSchema;
-  get_activity_data: typeof GetActivityDataSchema;
-  get_readiness_data: typeof GetReadinessDataSchema;
-  get_heart_rate: typeof GetHeartRateSchema;
-  get_workouts: typeof GetWorkoutsSchema;
-  get_daily_sleep: typeof GetDailySleepSchema;
-  get_sessions: typeof GetSessionsSchema;
-  get_profile: typeof GetProfileSchema;
-  ping: typeof PingSchema;
-};
+export const toolSchemas = {
+  get_sleep_data: GetSleepDataSchema,
+  get_activity_data: GetActivityDataSchema,
+  get_readiness_data: GetReadinessDataSchema,
+  get_heart_rate: GetHeartRateSchema,
+  get_workouts: GetWorkoutsSchema,
+  get_daily_sleep: GetDailySleepSchema,
+  get_sessions: GetSessionsSchema,
+  get_profile: GetProfileSchema,
+  ping: PingSchema,
+} as const;
+
+export type ToolArgSchemas = typeof toolSchemas;
