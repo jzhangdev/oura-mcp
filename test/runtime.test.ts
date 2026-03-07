@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RuntimeValidationError, parseRuntimeConfig } from "../src/utils/runtime.ts";
+import {
+  RuntimeValidationError,
+  parseRuntimeConfig,
+  validateStartupRuntime,
+} from "../src/utils/runtime.ts";
 
 test("parseRuntimeConfig returns the configured Oura token", () => {
   const config = parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "20.11.1");
@@ -18,8 +22,19 @@ test("parseRuntimeConfig rejects missing tokens", () => {
   });
 });
 
+test("validateStartupRuntime allows startup without an Oura token", () => {
+  assert.doesNotThrow(() => validateStartupRuntime("20.11.1"));
+});
+
 test("parseRuntimeConfig rejects unsupported Node.js versions", () => {
   assert.throws(() => parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "16.20.2"), {
+    name: "RuntimeValidationError",
+    message: "Node.js >= 18 is required. Current: v16.20.2",
+  });
+});
+
+test("validateStartupRuntime rejects unsupported Node.js versions", () => {
+  assert.throws(() => validateStartupRuntime("16.20.2"), {
     name: "RuntimeValidationError",
     message: "Node.js >= 18 is required. Current: v16.20.2",
   });

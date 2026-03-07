@@ -21,6 +21,15 @@ function formatNodeVersion(nodeVersion: string): string {
   return nodeVersion.startsWith("v") ? nodeVersion : `v${nodeVersion}`;
 }
 
+function validateNodeVersion(nodeVersion: string): void {
+  const nodeMajor = getNodeMajorVersion(nodeVersion);
+  if (!nodeMajor || nodeMajor < MIN_NODE_MAJOR) {
+    throw new RuntimeValidationError(
+      `Node.js >= ${MIN_NODE_MAJOR} is required. Current: ${formatNodeVersion(nodeVersion)}`
+    );
+  }
+}
+
 function requireEnvVar(env: NodeJS.ProcessEnv, key: RequiredEnvVar): string {
   const value = env[key];
   if (!value) {
@@ -30,16 +39,15 @@ function requireEnvVar(env: NodeJS.ProcessEnv, key: RequiredEnvVar): string {
   return value;
 }
 
+export function validateStartupRuntime(nodeVersion: string = process.versions.node): void {
+  validateNodeVersion(nodeVersion);
+}
+
 export function parseRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
   nodeVersion: string = process.versions.node
 ): RuntimeConfig {
-  const nodeMajor = getNodeMajorVersion(nodeVersion);
-  if (!nodeMajor || nodeMajor < MIN_NODE_MAJOR) {
-    throw new RuntimeValidationError(
-      `Node.js >= ${MIN_NODE_MAJOR} is required. Current: ${formatNodeVersion(nodeVersion)}`
-    );
-  }
+  validateNodeVersion(nodeVersion);
 
   return {
     ouraAccessToken: requireEnvVar(env, "OURA_ACCESS_TOKEN"),

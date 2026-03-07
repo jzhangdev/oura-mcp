@@ -7,6 +7,9 @@ import { fetchAllPages } from "../src/api/pagination.ts";
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.OURA_ACCESS_TOKEN;
 
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+
 type MockResponseInit = {
   headers?: Record<string, string>;
   status?: number;
@@ -47,6 +50,13 @@ afterEach(() => {
   } else {
     delete process.env.OURA_ACCESS_TOKEN;
   }
+
+  delete process.env.MCP_STDIO_MODE;
+  delete process.env.LOG_STDOUT;
+  delete process.env.NO_COLOR;
+  delete process.env.FORCE_COLOR;
+  process.stderr.write = originalStderrWrite;
+  process.stdout.write = originalStdoutWrite;
 });
 
 test("ouraRequest includes structured Oura error details", async () => {
@@ -72,6 +82,15 @@ test("ouraRequest includes structured Oura error details", async () => {
     () => ouraRequest("/usercollection/personal_info"),
     /Oura API error: 401 - Unauthorized \| code=invalid_token \| request_id=req-123 \| details=\{"scope":"personal_info"\}/
   );
+});
+
+test("ouraRequest rejects missing tokens only when an Oura-backed tool is called", async () => {
+  delete process.env.OURA_ACCESS_TOKEN;
+
+  await assert.rejects(() => ouraRequest("/usercollection/personal_info"), {
+    name: "RuntimeValidationError",
+    message: "Missing OURA_ACCESS_TOKEN. Set it in environment or .env file.",
+  });
 });
 
 test("fetchAllPages merges all paginated data into one response", async () => {
@@ -124,4 +143,33 @@ test("fetchAllPages returns unexpected payloads unchanged", async () => {
   assert.deepEqual(result, {
     items: [{ id: "raw-shape" }],
   });
+});
+
+test("MCP stdio mode forces logs to stderr even when LOG_STDOUT is enabled", async () => {
+  process.env.OURA_ACCESS_TOKEN = "test-token";
+  process.env.MCP_STDIO_MODE = "1";
+  process.env.LOG_STDOUT = "1";
+
+  const stderrChunks: string[] = [];
+  const stdoutChunks: string[] = [];
+
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    stdoutChunks.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+
+  const { createLogger } = await import(`../src/utils/logger.ts?case=${Date.now()}`);
+  const testLogger = createLogger("mcp-test");
+
+  testLogger.info("hello from stderr");
+
+  assert.equal(stdoutChunks.length, 0);
+  assert.equal(stderrChunks.length, 1);
+  assert.match(stderrChunks[0], /hello from stderr/);
+  assert.doesNotMatch(stderrChunks[0], /\x1b\[/);
 });

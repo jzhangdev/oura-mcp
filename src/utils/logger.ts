@@ -22,8 +22,12 @@ function isTruthy(value: string | undefined): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
+function isMcpStdioMode(): boolean {
+  return isTruthy(process.env.MCP_STDIO_MODE);
+}
+
 function shouldUseColors(): boolean {
-  if (isTruthy(process.env.MCP_STDIO_MODE)) {
+  if (isMcpStdioMode()) {
     return false;
   }
 
@@ -38,6 +42,14 @@ function shouldUseColors(): boolean {
   return Boolean(process.stderr.isTTY);
 }
 
+function resolveSink(): LogSink {
+  if (isMcpStdioMode()) {
+    return "stderr";
+  }
+
+  return isTruthy(process.env.LOG_STDOUT) ? "stdout" : "stderr";
+}
+
 class Logger {
   private level: LogLevel;
   private readonly context: string;
@@ -49,7 +61,7 @@ class Logger {
     this.level = envLevel && LOG_LEVELS[envLevel] !== undefined ? envLevel : "info";
     this.context = context;
     this.useColors = shouldUseColors();
-    this.sink = isTruthy(process.env.LOG_STDOUT) ? "stdout" : "stderr";
+    this.sink = resolveSink();
   }
 
   private shouldLog(level: LogLevel): boolean {

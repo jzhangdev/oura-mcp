@@ -11,7 +11,7 @@ import { ZodError } from "zod";
 import { findTool, toMcpToolList } from "./tools/registry.js";
 import { logger } from "./utils/logger.js";
 import { RateLimitError } from "./utils/retry.js";
-import { RuntimeValidationError, validateRuntime } from "./utils/runtime.js";
+import { RuntimeValidationError, validateStartupRuntime } from "./utils/runtime.js";
 
 process.env.MCP_STDIO_MODE ??= "1";
 
@@ -100,7 +100,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, handleToolCall);
 
 async function main(): Promise<void> {
-  validateRuntime();
+  validateStartupRuntime();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
