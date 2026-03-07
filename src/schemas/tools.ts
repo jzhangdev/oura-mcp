@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-const DateFieldDescription = "Date in YYYY-MM-DD format";
+const DATE_FIELD_DESCRIPTION = "Date in YYYY-MM-DD format";
 
-export const OptionalDateSchema = z.string().optional().describe(DateFieldDescription);
-export const RequiredDateSchema = z.string().describe(DateFieldDescription);
+export const OptionalDateSchema = z.string().optional().describe(DATE_FIELD_DESCRIPTION);
+export const RequiredDateSchema = z.string().describe(DATE_FIELD_DESCRIPTION);
 
 function createDateRangeSchema() {
   return z.object({

@@ -1,5 +1,5 @@
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { fetchAllPages } from "../api/pagination.js";
 import { ouraRequest } from "../api/ouraClient.js";
@@ -19,10 +19,29 @@ import { validateDate, validateDateRange } from "../utils/date.js";
 type JsonSchema = ReturnType<typeof zodToJsonSchema>;
 type Params = Record<string, string | undefined>;
 type ToolSchema = z.ZodTypeAny;
-type RangeSchema = z.ZodObject<{
-  start_date: z.ZodOptional<z.ZodString>;
-  end_date: z.ZodOptional<z.ZodString>;
-}>;
+type DateRangeArgs = {
+  start_date?: string;
+  end_date?: string;
+};
+
+type RangeToolName =
+  | "get_sleep_data"
+  | "get_activity_data"
+  | "get_readiness_data"
+  | "get_heart_rate"
+  | "get_workouts"
+  | "get_sessions";
+
+type RangeToolConfig = {
+  name: RangeToolName;
+  description: string;
+  schema: z.ZodObject<{
+    start_date: z.ZodOptional<z.ZodString>;
+    end_date: z.ZodOptional<z.ZodString>;
+  }>;
+  endpoint: string;
+  mapRange?: (range: { start: string; end: string }) => Params;
+};
 
 export type ToolDef<TSchema extends ToolSchema = ToolSchema> = {
   name: string;
@@ -38,6 +57,15 @@ function toInputSchema(schema: ToolSchema): JsonSchema {
   });
 }
 
+function createTool<TSchema extends ToolSchema>(config: {
+  name: string;
+  description: string;
+  schema: TSchema;
+  handler: (args: z.infer<TSchema>) => Promise<unknown>;
+}): ToolDef<TSchema> {
+  return config;
+}
+
 function createCollectionTool<TSchema extends ToolSchema>(config: {
   name: string;
   description: string;
@@ -45,7 +73,7 @@ function createCollectionTool<TSchema extends ToolSchema>(config: {
   endpoint: string;
   mapParams: (args: z.infer<TSchema>) => Params;
 }): ToolDef<TSchema> {
-  return {
+  return createTool({
     name: config.name,
     description: config.description,
     schema: config.schema,
@@ -53,55 +81,51 @@ function createCollectionTool<TSchema extends ToolSchema>(config: {
       const args = config.schema.parse(rawArgs);
       return fetchAllPages(config.endpoint, config.mapParams(args));
     },
-  };
+  });
 }
 
-function createRangeCollectionTool(config: {
-  name:
-    | "get_sleep_data"
-    | "get_activity_data"
-    | "get_readiness_data"
-    | "get_heart_rate"
-    | "get_workouts"
-    | "get_sessions";
-  description: string;
-  schema: RangeSchema;
-  endpoint: string;
-  mapRange?: (range: { start: string; end: string }) => Params;
-}): ToolDef<RangeSchema> {
+function resolveRangeParams(
+  args: DateRangeArgs,
+  mapRange?: (range: { start: string; end: string }) => Params
+): Params {
+  const range = validateDateRange(args.start_date, args.end_date);
+  if (range instanceof Error) {
+    throw range;
+  }
+
+  return mapRange ? mapRange(range) : { start_date: range.start, end_date: range.end };
+}
+
+function createRangeCollectionTool(config: RangeToolConfig): ToolDef<RangeToolConfig["schema"]> {
   return createCollectionTool({
     name: config.name,
     description: config.description,
     schema: config.schema,
     endpoint: config.endpoint,
-    mapParams: (args) => {
-      const range = validateDateRange(args.start_date, args.end_date);
-      if (range instanceof Error) throw range;
-      return config.mapRange ? config.mapRange(range) : { start_date: range.start, end_date: range.end };
-    },
+    mapParams: (args) => resolveRangeParams(args, config.mapRange),
   });
 }
 
-const rangeTools: ToolDef[] = [
-  createRangeCollectionTool({
+const rangeToolConfigs: RangeToolConfig[] = [
+  {
     name: "get_sleep_data",
     description: "Get sleep data including duration, quality, sleep stages, and sleep score.",
     schema: GetSleepDataSchema,
     endpoint: "/usercollection/daily_sleep",
-  }),
-  createRangeCollectionTool({
+  },
+  {
     name: "get_activity_data",
     description: "Get daily activity metrics including steps, calories, active time, and activity score.",
     schema: GetActivityDataSchema,
     endpoint: "/usercollection/daily_activity",
-  }),
-  createRangeCollectionTool({
+  },
+  {
     name: "get_readiness_data",
     description: "Get readiness score and contributors for the specified date range.",
     schema: GetReadinessDataSchema,
     endpoint: "/usercollection/daily_readiness",
-  }),
-  createRangeCollectionTool({
+  },
+  {
     name: "get_heart_rate",
     description: "Get heart rate data including resting heart rate and heart rate variability.",
     schema: GetHeartRateSchema,
@@ -110,20 +134,22 @@ const rangeTools: ToolDef[] = [
       start_datetime: `${range.start}T00:00:00Z`,
       end_datetime: `${range.end}T23:59:59Z`,
     }),
-  }),
-  createRangeCollectionTool({
+  },
+  {
     name: "get_workouts",
     description: "Get workout records including activity type, duration, intensity, and heart rate data.",
     schema: GetWorkoutsSchema,
     endpoint: "/usercollection/workout",
-  }),
-  createRangeCollectionTool({
+  },
+  {
     name: "get_sessions",
     description: "Get tagged sessions such as meditation, nap, or other logged activities.",
     schema: GetSessionsSchema,
     endpoint: "/usercollection/session",
-  }),
+  },
 ];
+
+const rangeTools = rangeToolConfigs.map(createRangeCollectionTool);
 
 const singleDateTools: ToolDef[] = [
   createCollectionTool({
@@ -133,25 +159,28 @@ const singleDateTools: ToolDef[] = [
     endpoint: "/usercollection/daily_sleep",
     mapParams: (args) => {
       const date = validateDate(args.date, "date");
-      if (date instanceof Error) throw date;
+      if (date instanceof Error) {
+        throw date;
+      }
+
       return { start_date: date, end_date: date };
     },
   }),
 ];
 
 const utilityTools: ToolDef[] = [
-  {
+  createTool({
     name: "get_profile",
     description: "Get personal info for the current user to verify token and show profile data.",
     schema: GetProfileSchema,
     handler: async () => ouraRequest("/usercollection/personal_info", {}),
-  },
-  {
+  }),
+  createTool({
     name: "ping",
     description: "Simple health check for the MCP server without calling the Oura API.",
     schema: PingSchema,
     handler: async () => ({ status: "ok", timestamp: new Date().toISOString() }),
-  },
+  }),
 ];
 
 export const tools: ToolDef[] = [...rangeTools, ...singleDateTools, ...utilityTools];

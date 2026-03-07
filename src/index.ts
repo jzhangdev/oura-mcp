@@ -11,15 +11,17 @@ import { ZodError } from "zod";
 import { findTool, toMcpToolList } from "./tools/registry.js";
 import { logger } from "./utils/logger.js";
 import { RateLimitError } from "./utils/retry.js";
+import { RuntimeValidationError, validateRuntime } from "./utils/runtime.js";
 
 const SERVER_NAME = "oura-mcp";
 const SERVER_VERSION = "1.3.0";
 
 type TextContent = { type: "text"; text: string };
+type ToolArguments = Record<string, unknown>;
 type ToolCallRequest = {
   params: {
     name: string;
-    arguments?: Record<string, unknown>;
+    arguments?: ToolArguments;
   };
 };
 
@@ -28,22 +30,6 @@ type ToolResponse = {
   isError?: boolean;
 };
 
-function failFast(message: string): never {
-  logger.error(message);
-  process.exit(1);
-}
-
-function ensureRuntime(): void {
-  const [major] = process.versions.node.split(".").map(Number);
-  if (!major || major < 18) {
-    failFast(`Node.js >= 18 is required. Current: ${process.version}`);
-  }
-
-  if (!process.env.OURA_ACCESS_TOKEN) {
-    failFast("Missing OURA_ACCESS_TOKEN. Set it in environment or .env file.");
-  }
-}
-
 function formatError(error: unknown): string {
   if (error instanceof RateLimitError) {
     return `⏳ Rate limited by Oura API. Please wait ${error.retryAfter} seconds before trying again.`;
@@ -51,6 +37,10 @@ function formatError(error: unknown): string {
 
   if (error instanceof ZodError) {
     return `❌ Validation Error: ${error.issues.map((issue) => issue.message).join("; ")}`;
+  }
+
+  if (error instanceof RuntimeValidationError) {
+    return `⚙️ Runtime configuration error: ${error.message}`;
   }
 
   const message = error instanceof Error ? error.message : String(error);
@@ -96,8 +86,6 @@ async function handleToolCall(request: ToolCallRequest): Promise<ToolResponse> {
   }
 }
 
-ensureRuntime();
-
 const server = new Server(
   { name: SERVER_NAME, version: SERVER_VERSION },
   { capabilities: { tools: {} } }
@@ -110,6 +98,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, handleToolCall);
 
 async function main(): Promise<void> {
+  validateRuntime();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);

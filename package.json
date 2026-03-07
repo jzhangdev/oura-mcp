@@ -10,9 +10,10 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
     "format": "prettier -w \"src/**/*.{ts,js,json,md}\" || true",
     "lint": "echo 'No linter configured yet'",
-    "prepack": "npm run build",
+    "prepack": "pnpm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist"
@@ -27,6 +28,7 @@
   "author": "",
   "license": "MIT",
   "type": "commonjs",
+  "packageManager": "pnpm@10.16.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^17.3.1",

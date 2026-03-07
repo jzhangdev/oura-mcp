@@ -35,7 +35,18 @@
 
 ### 7) 脚本与版本
 - 版本号升级为 `1.3.0`
-- 新增脚本：`typecheck`、`format`（Prettier）、`lint` 占位、`prepack` 自动构建
+- 新增脚本：`typecheck`、`test`、`format`（Prettier）、`lint` 占位、`prepack` 自动构建
+
+### 8) 日期校验强化
+- 严格校验 `YYYY-MM-DD` 是否为真实日历日期，避免 `new Date(...)` 自动归一化导致的误判
+- 使用 UTC 计算默认日期范围，避免时区边界带来的偏差
+
+### 9) 自动化测试
+- 新增 Node 原生测试套件，覆盖运行时配置校验、日期边界、分页合并与 Oura 错误解析
+- 移除 API 客户端的导入时环境校验副作用，便于测试并降低模块耦合
+
+### 10) CI
+- 新增 GitHub Actions，在 `push` / `pull_request` 时自动执行 `typecheck`、`test`、`build`
 
 ---
 
@@ -49,8 +60,6 @@
 
 ## 🔜 后续建议
 
-- 单元测试（Vitest/Jest），包含分页与错误分支
-- CI（GitHub Actions）自动构建与类型检查
 - README 增补响应示例与 FAQ
 - 更健壮的 Zod -> JSON Schema 映射或直接依赖 @mcp/sdk 的 zod-to-json-schema 工具（若提供）
 

@@ -1,34 +1,56 @@
-import { ouraRequest } from './ouraClient.js';
-import { createLogger } from '../utils/logger.js';
+import { ouraRequest } from "./ouraClient.js";
+import { createLogger } from "../utils/logger.js";
 
-const logger = createLogger('oura-pagination');
+const logger = createLogger("oura-pagination");
 
-// For Oura v2 collection endpoints returning { data: [...], next_token?: string }
-export async function fetchAllPages(endpoint: string, params: Record<string, string | undefined>): Promise<any> {
-  let nextToken: string | undefined = undefined;
-  const merged: any = { data: [] as any[] };
+type PaginationResponse = {
+  data?: unknown[];
+  next_token?: string;
+  nextToken?: string;
+};
+
+type MergedPaginationResponse = {
+  data: unknown[];
+};
+
+export async function fetchAllPages(
+  endpoint: string,
+  params: Record<string, string | undefined>
+): Promise<unknown> {
+  let nextToken: string | undefined;
+  const merged: MergedPaginationResponse = { data: [] };
 
   do {
     const pageParams: Record<string, string> = {};
-    for (const [k, v] of Object.entries(params || {})) {
-      if (v) pageParams[k] = v;
-    }
-    if (nextToken) pageParams["next_token"] = nextToken;
-
-    const res = await ouraRequest(endpoint, pageParams);
-
-    if (Array.isArray(res)) {
-      // Some endpoints could theoretically return arrays directly
-      merged.data.push(...res);
-    } else if (res && Array.isArray(res.data)) {
-      merged.data.push(...res.data);
-    } else {
-      // Unknown shape; just return raw
-      logger.warn('Unexpected pagination payload shape', { endpoint, sample: res });
-      return res;
+    for (const [key, value] of Object.entries(params)) {
+      if (value) {
+        pageParams[key] = value;
+      }
     }
 
-    nextToken = res?.next_token || res?.nextToken;
+    if (nextToken) {
+      pageParams.next_token = nextToken;
+    }
+
+    const response = await ouraRequest(endpoint, pageParams);
+
+    if (Array.isArray(response)) {
+      merged.data.push(...response);
+      nextToken = undefined;
+      continue;
+    }
+
+    if (response && typeof response === "object") {
+      const page = response as PaginationResponse;
+      if (Array.isArray(page.data)) {
+        merged.data.push(...page.data);
+        nextToken = page.next_token ?? page.nextToken;
+        continue;
+      }
+    }
+
+    logger.warn("Unexpected pagination payload shape", { endpoint, sample: response });
+    return response;
   } while (nextToken);
 
   return merged;

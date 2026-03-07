@@ -10,6 +10,9 @@ MCP (Model Context Protocol) server for Oura Ring API integration.
 - Retry with exponential backoff and jitter, including rate-limit handling (429)
 - Improved error messages with Oura error code and request id
 - Startup validation for `OURA_ACCESS_TOKEN` and Node.js >= 18
+- Strict ISO date validation that rejects impossible calendar dates
+- Automated tests for runtime validation, pagination, and API error handling
+- GitHub Actions CI for typecheck, test, and build
 - Logging with levels via `LOG_LEVEL` env (`error|warn|info|debug`)
 
 ## Tools
@@ -41,14 +44,14 @@ LOG_LEVEL=info
 3. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 4. Build and run:
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ## Usage with Codex
@@ -71,8 +74,9 @@ npm start
 ## Development
 
 ```bash
-npm run typecheck
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Project structure:
