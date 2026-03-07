@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { fetchAllPages } from "../api/pagination.js";
 import { ouraRequest } from "../api/ouraClient.js";
@@ -16,7 +15,7 @@ import {
 } from "../schemas/tools.js";
 import { validateDate, validateDateRange } from "../utils/date.js";
 
-type JsonSchema = ReturnType<typeof zodToJsonSchema>;
+type JsonSchema = Record<string, unknown>;
 type Params = Record<string, string | undefined>;
 type ToolSchema = z.ZodTypeAny;
 type DateRangeArgs = {
@@ -51,10 +50,7 @@ export type ToolDef<TSchema extends ToolSchema = ToolSchema> = {
 };
 
 function toInputSchema(schema: ToolSchema): JsonSchema {
-  return zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], {
-    target: "jsonSchema7",
-    $refStrategy: "none",
-  });
+  return z.toJSONSchema(schema) as JsonSchema;
 }
 
 function createTool<TSchema extends ToolSchema>(config: {
