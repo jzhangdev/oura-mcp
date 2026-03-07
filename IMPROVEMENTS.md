@@ -1,73 +1,73 @@
-# Oura MCP 项目改进记录
+# Oura MCP Project Improvements Log
 
-> 最后更新：2026-03-07
+> Last updated: 2026-03-07
 
 ---
 
-## ✅ 已完成的改进（v1.3.0）
+## ✅ Completed Improvements (v1.3.0)
 
-### 1) 代码结构模块化
-- 将工具定义与处理逻辑拆分到 `src/tools/registry.ts`
-- 将工具输入 Schema 抽取到 `src/schemas/tools.ts`
-- `src/index.ts` 仅负责 MCP 服务器装配与启动
+### 1) Modularized code structure
+- Split tool definitions and handler logic into `src/tools/registry.ts`
+- Extracted tool input schemas into `src/schemas/tools.ts`
+- Kept `src/index.ts` focused on MCP server wiring and startup only
 
-### 2) 分页支持（next_token）
-- 新增 `src/api/pagination.ts`，实现 `fetchAllPages(endpoint, params)`
-- 所有集合类端点统一跟随 `next_token` 并合并返回的 `data` 数组
-- 已集成到：`daily_sleep`、`daily_activity`、`daily_readiness`、`session`、`workout`、`heartrate`
+### 2) Pagination support (`next_token`)
+- Added `src/api/pagination.ts` with `fetchAllPages(endpoint, params)`
+- Standardized all collection endpoints to follow `next_token` and merge returned `data` arrays
+- Integrated into: `daily_sleep`, `daily_activity`, `daily_readiness`, `session`, `workout`, and `heartrate`
 
-### 3) 健康与验证类工具
-- 新增 `get_profile`：请求 `/usercollection/personal_info`，用于校验 Token 并返回用户信息
-- 新增 `ping`：本地健康检查，无需外部请求
+### 3) Health check and validation tools
+- Added `get_profile`: calls `/usercollection/personal_info` to validate the token and return user information
+- Added `ping`: local health check with no external API request required
 
-### 4) 错误处理改进
-- 解析 Oura 错误 JSON，提取 `code`、`message`、`details`
-- 尝试从响应头包含 `x-request-id`（或 `request-id`）并回显，便于排障
-- 保留原有 429 限流与退避重试逻辑
+### 4) Improved error handling
+- Parses Oura error JSON and extracts `code`, `message`, and `details`
+- Attempts to read `x-request-id` (or `request-id`) from response headers and echo it back for easier troubleshooting
+- Preserves the existing 429 rate-limit handling and exponential backoff retry logic
 
-### 5) 启动时校验
-- 缺失 `OURA_ACCESS_TOKEN` 将立即退出并提示
-- Node.js 版本检查（>= 18）确保内置 `fetch` 可用
+### 5) Startup validation
+- Exits immediately with guidance when `OURA_ACCESS_TOKEN` is missing
+- Checks Node.js version (>= 18) to ensure built-in `fetch` is available
 
-### 6) 文档改进
-- README 增加工具用法示例、分页与错误处理说明、环境变量与 Codex MCP 配置示例
-- 记录了日志等级 `LOG_LEVEL`
+### 6) Documentation improvements
+- Expanded README with tool usage examples, pagination and error handling notes, environment variables, and Codex MCP configuration examples
+- Documented the `LOG_LEVEL` setting
 
-### 7) 脚本与版本
-- 版本号升级为 `1.3.0`
-- 新增脚本：`typecheck`、`test`、`format`（Prettier）、`lint` 占位、`prepack` 自动构建
+### 7) Scripts and versioning
+- Bumped version to `1.3.0`
+- Added scripts: `typecheck`, `test`, `format` (Prettier), `lint` placeholder, and `prepack` auto-build
 
-### 8) 日期校验强化
-- 严格校验 `YYYY-MM-DD` 是否为真实日历日期，避免 `new Date(...)` 自动归一化导致的误判
-- 使用 UTC 计算默认日期范围，避免时区边界带来的偏差
+### 8) Stronger date validation
+- Strictly validates whether `YYYY-MM-DD` is a real calendar date, avoiding false positives caused by automatic normalization in `new Date(...)`
+- Uses UTC for default date-range calculations to avoid timezone boundary issues
 
-### 9) 自动化测试
-- 新增 Node 原生测试套件，覆盖运行时配置校验、日期边界、分页合并与 Oura 错误解析
-- 移除 API 客户端的导入时环境校验副作用，便于测试并降低模块耦合
+### 9) Automated tests
+- Added a native Node.js test suite covering runtime configuration validation, date boundaries, pagination merging, and Oura error parsing
+- Removed import-time environment validation side effects from the API client to improve testability and reduce module coupling
 
 ### 10) CI
-- 新增 GitHub Actions，在 `push` / `pull_request` 时自动执行 `typecheck`、`test`、`build`
+- Added GitHub Actions to automatically run `typecheck`, `test`, and `build` on `push` and `pull_request`
 
 ---
 
-## 📊 效果
+## 📊 Impact
 
-- 对长时间范围查询稳定返回完整数据（自动分页）
-- 出错时能看到明确的错误码与请求 ID，便于联系 Oura 支持或自查
-- 结构更清晰、易于扩展新工具
-
----
-
-## 🔜 后续建议
-
-- README 增补响应示例与 FAQ
-- 更健壮的 Zod -> JSON Schema 映射或直接依赖 @mcp/sdk 的 zod-to-json-schema 工具（若提供）
+- Long-range queries now return complete data reliably through automatic pagination
+- Errors now include clearer error codes and request IDs, making self-diagnosis and Oura support requests easier
+- The codebase is cleaner and easier to extend with new tools
 
 ---
 
-## 目录结构（当前）
+## 🔜 Suggested next steps
 
-```
+- Add response examples and an FAQ section to the README
+- Improve Zod -> JSON Schema mapping further, or directly use a zod-to-json-schema utility from `@mcp/sdk` if one becomes available
+
+---
+
+## Current directory structure
+
+```text
 src/
 ├── api/
 │   ├── ouraClient.ts
