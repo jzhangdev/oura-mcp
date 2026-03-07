@@ -13,6 +13,8 @@ import { logger } from "./utils/logger.js";
 import { RateLimitError } from "./utils/retry.js";
 import { RuntimeValidationError, validateRuntime } from "./utils/runtime.js";
 
+process.env.MCP_STDIO_MODE ??= "1";
+
 const SERVER_NAME = "oura-mcp";
 const SERVER_VERSION = "1.3.0";
 
@@ -102,7 +104,6 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
 }
 
 main().catch((error) => {
