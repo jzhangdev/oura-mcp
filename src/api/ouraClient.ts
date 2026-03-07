@@ -21,6 +21,29 @@ if (!OURA_ACCESS_TOKEN) {
   process.exit(1);
 }
 
+function buildErrorMessage(response: any, rawBody: string): string {
+  const requestId = response.headers?.get?.('x-request-id') || response.headers?.get?.('request-id');
+  let code: string | undefined;
+  let message: string | undefined;
+  let details: any;
+  try {
+    const parsed = JSON.parse(rawBody);
+    code = parsed?.error?.code || parsed?.code;
+    message = parsed?.error?.message || parsed?.message;
+    details = parsed?.error?.details || parsed?.details;
+  } catch {
+    // keep rawBody
+  }
+  const parts = [
+    `Oura API error: ${response.status}${message ? ` - ${message}` : ''}`,
+    code ? `code=${code}` : undefined,
+    requestId ? `request_id=${requestId}` : undefined,
+    details ? `details=${JSON.stringify(details)}` : undefined,
+    !message ? rawBody : undefined,
+  ].filter(Boolean);
+  return parts.join(' | ');
+}
+
 export async function ouraRequest(
   endpoint: string, 
   params?: Record<string, string>,
@@ -39,7 +62,7 @@ export async function ouraRequest(
   
   for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
     try {
-      const response = await fetch(url.toString(), {
+      const response: any = await fetch(url.toString(), {
         headers: {
           Authorization: `Bearer ${OURA_ACCESS_TOKEN}`,
         },
@@ -47,7 +70,7 @@ export async function ouraRequest(
 
       // 处理速率限制 (429)
       if (response.status === 429) {
-        const retryAfterHeader = response.headers.get('Retry-After');
+        const retryAfterHeader = response.headers?.get?.('Retry-After');
         const retryAfter = retryAfterHeader 
           ? parseInt(retryAfterHeader, 10) 
           : 60;
@@ -72,7 +95,7 @@ export async function ouraRequest(
           continue;
         }
         
-        throw new Error(`Oura API error: ${response.status} - ${errorText}`);
+        throw new Error(buildErrorMessage(response, errorText));
       }
 
       const data = await response.json();
@@ -96,7 +119,7 @@ export async function ouraRequest(
       }
       
       // 其他错误直接抛出
-      if (error instanceof Error && error.message.startsWith('Oura API error')) {
+      if (error instanceof Error && error.message.includes('Oura API error')) {
         throw error;
       }
     }

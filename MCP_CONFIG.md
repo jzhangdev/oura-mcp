@@ -9,7 +9,8 @@ Add this to your Codex MCP settings to use the Oura MCP server:
       "command": "node",
       "args": ["/path/to/oura-mcp/dist/index.js"],
       "env": {
-        "OURA_ACCESS_TOKEN": "your_oura_access_token_here"
+        "OURA_ACCESS_TOKEN": "your_oura_access_token_here",
+        "LOG_LEVEL": "info"
       }
     }
   }
@@ -26,10 +27,16 @@ Add this to your Codex MCP settings to use the Oura MCP server:
 
 ## Available Tools
 
-Once configured, you can ask Codex to:
+- get_sleep_data
+- get_activity_data
+- get_readiness_data
+- get_heart_rate
+- get_workouts
+- get_daily_sleep
+- get_sessions
+- get_profile
+- ping
 
-- "Get my sleep data from last week"
-- "Show my readiness score for today"
-- "How many steps did I take yesterday?"
-- "What was my heart rate variability this morning?"
-- "List my workouts from the past month"
+Notes:
+- Pagination is automatic via `next_token` for Oura v2 collection endpoints.
+- Errors will include Oura error `code`, `message`, and `x-request-id` when available.
