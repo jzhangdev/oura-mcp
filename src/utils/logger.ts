@@ -2,6 +2,7 @@ export type LogLevel = "error" | "warn" | "info" | "debug";
 
 type LogData = unknown;
 type LogSink = "stdout" | "stderr";
+type ConsoleMethod = "log" | "info" | "warn" | "error" | "debug";
 
 const LOG_LEVELS: Record<LogLevel, number> = {
   error: 0,
@@ -17,6 +18,10 @@ const LOG_COLORS = {
   debug: "\x1b[90m",
   reset: "\x1b[0m",
 } as const;
+
+const consoleRedirectState = {
+  active: false,
+};
 
 function isTruthy(value: string | undefined): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "on";
@@ -48,6 +53,47 @@ function resolveSink(): LogSink {
   }
 
   return isTruthy(process.env.LOG_STDOUT) ? "stdout" : "stderr";
+}
+
+function serializeConsoleArg(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return value.stack ?? `${value.name}: ${value.message}`;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function writeStderrLine(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
+
+function createConsoleRedirect(method: ConsoleMethod) {
+  return (...args: unknown[]): void => {
+    const rendered = args.map(serializeConsoleArg).join(" ");
+    const prefix = `[console.${method}]`;
+    writeStderrLine(rendered ? `${prefix} ${rendered}` : prefix);
+  };
+}
+
+export function redirectConsoleToStderrForMcp(): void {
+  if (!isMcpStdioMode() || consoleRedirectState.active) {
+    return;
+  }
+
+  console.log = createConsoleRedirect("log");
+  console.info = createConsoleRedirect("info");
+  console.warn = createConsoleRedirect("warn");
+  console.error = createConsoleRedirect("error");
+  console.debug = createConsoleRedirect("debug");
+  consoleRedirectState.active = true;
 }
 
 class Logger {

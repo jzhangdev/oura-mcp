@@ -9,11 +9,12 @@ import {
 import { ZodError } from "zod";
 
 import { findTool, toMcpToolList } from "./tools/registry.js";
-import { logger } from "./utils/logger.js";
+import { logger, redirectConsoleToStderrForMcp } from "./utils/logger.js";
 import { RateLimitError } from "./utils/retry.js";
 import { RuntimeValidationError, validateStartupRuntime } from "./utils/runtime.js";
 
 process.env.MCP_STDIO_MODE ??= "1";
+redirectConsoleToStderrForMcp();
 
 const SERVER_NAME = "oura-mcp";
 const SERVER_VERSION = "1.3.0";
