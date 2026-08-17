@@ -8,7 +8,7 @@ import {
 } from "../src/utils/runtime.ts";
 
 test("parseRuntimeConfig returns the configured Oura token", () => {
-  const config = parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "20.11.1");
+  const config = parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "24.19.0");
 
   assert.deepEqual(config, {
     ouraAccessToken: "test-token",
@@ -16,27 +16,27 @@ test("parseRuntimeConfig returns the configured Oura token", () => {
 });
 
 test("parseRuntimeConfig rejects missing tokens", () => {
-  assert.throws(() => parseRuntimeConfig({}, "20.11.1"), {
+  assert.throws(() => parseRuntimeConfig({}, "24.19.0"), {
     name: "RuntimeValidationError",
     message: "Missing OURA_ACCESS_TOKEN. Set it in environment or .env file.",
   });
 });
 
 test("validateStartupRuntime allows startup without an Oura token", () => {
-  assert.doesNotThrow(() => validateStartupRuntime("20.11.1"));
+  assert.doesNotThrow(() => validateStartupRuntime("24.19.0"));
 });
 
 test("parseRuntimeConfig rejects unsupported Node.js versions", () => {
-  assert.throws(() => parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "16.20.2"), {
+  assert.throws(() => parseRuntimeConfig({ OURA_ACCESS_TOKEN: "test-token" }, "22.23.2"), {
     name: "RuntimeValidationError",
-    message: "Node.js >= 18 is required. Current: v16.20.2",
+    message: "Node.js >= 24 is required. Current: v22.23.2",
   });
 });
 
 test("validateStartupRuntime rejects unsupported Node.js versions", () => {
-  assert.throws(() => validateStartupRuntime("16.20.2"), {
+  assert.throws(() => validateStartupRuntime("22.23.2"), {
     name: "RuntimeValidationError",
-    message: "Node.js >= 18 is required. Current: v16.20.2",
+    message: "Node.js >= 24 is required. Current: v22.23.2",
   });
 });
 

@@ -1,4 +1,4 @@
-const MIN_NODE_MAJOR = 18;
+const MIN_NODE_MAJOR = 24;
 type RequiredEnvVar = "OURA_ACCESS_TOKEN";
 
 export type RuntimeConfig = {
