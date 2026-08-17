@@ -9,7 +9,7 @@ MCP (Model Context Protocol) server for Oura Ring API integration.
 - Robust pagination for Oura v2 collection endpoints (`next_token`)
 - Retry with exponential backoff and jitter, including rate-limit handling (429)
 - Improved error messages with Oura error code and request id
-- Startup validation for `OURA_ACCESS_TOKEN` and Node.js >= 18
+- Startup validation for `OURA_ACCESS_TOKEN` and Node.js 24 LTS
 - Strict ISO date validation that rejects impossible calendar dates
 - Automated tests for runtime validation, pagination, and API error handling
 - GitHub Actions CI for typecheck, test, and build

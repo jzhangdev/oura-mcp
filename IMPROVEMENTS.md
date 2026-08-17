@@ -27,7 +27,7 @@
 
 ### 5) Startup validation
 - Exits immediately with guidance when `OURA_ACCESS_TOKEN` is missing
-- Checks Node.js version (>= 18) to ensure built-in `fetch` is available
+- Checks Node.js version (>= 24 LTS) to match the pinned runtime
 
 ### 6) Documentation improvements
 - Expanded README with tool usage examples, pagination and error handling notes, environment variables, and Codex MCP configuration examples
